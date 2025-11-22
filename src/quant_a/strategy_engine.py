@@ -1,9 +1,14 @@
+# src/quant_a/strategy_engine.py
 import pandas as pd
 import numpy as np
 
 def calculate_buy_and_hold(prices: pd.Series) -> pd.Series:
     """
-    Calcule la performance cumulée de la stratégie Buy-and-Hold (base 100).
+    Calcule la performance cumulée de la stratégie Buy-and-Hold (Achat et Conservation).
+    La série de résultats est normalisée pour commencer à 100.
+
+    :param prices: pd.Series des prix de l'actif.
+    :return: pd.Series de la valeur cumulée du portefeuille (Base 100).
     """
     if prices.empty:
         return pd.Series(dtype=float)
@@ -11,7 +16,7 @@ def calculate_buy_and_hold(prices: pd.Series) -> pd.Series:
     # Rendements quotidiens
     returns = prices.pct_change().fillna(0)
     
-    # Performance cumulée (valeur du portefeuille, base 100)
+    # Performance cumulée (valeur du portefeuille)
     cumulative_value = (1 + returns).cumprod()
     
     # Normalise pour commencer à 100.0
@@ -21,81 +26,86 @@ def calculate_buy_and_hold(prices: pd.Series) -> pd.Series:
 
 def calculate_ma_crossover(prices: pd.Series, short_window: int = 50, long_window: int = 200) -> pd.Series:
     """
-    Stratégie des Moyennes Mobiles Croisées : Achat lorsque la MA courte > MA longue.
+    Implémente la Stratégie des Moyennes Mobiles Croisées.
+    Achat/Position Longue (1.0) lorsque la MA courte > MA longue.
+    
+    :param prices: pd.Series des prix de l'actif.
+    :param short_window: Fenêtre de la Moyenne Mobile Courte (jours).
+    :param long_window: Fenêtre de la Moyenne Mobile Longue (jours).
+    :return: pd.Series de la valeur cumulée du portefeuille de la stratégie (Base 100).
     """
-    # Nécessite au moins la longue fenêtre de données pour démarrer
     if prices.empty or len(prices) < long_window:
         if not prices.empty:
-             return pd.Series([100.0], index=[prices.index[-1]])
+            # Retourne une série avec une seule valeur de 100 si pas assez de données pour la MA longue
+            return pd.Series([100.0], index=[prices.index[-1]])
         else:
-             return pd.Series(dtype=float)
+            return pd.Series(dtype=float)
 
-    # CORRECTION : prices.values.ravel() pour garantir que l'array est 1D
+    # Assure que 'prices' est un DataFrame pour le calcul des MAs
     prices_df = pd.DataFrame({'Price': prices.values.ravel()}, index=prices.index)
     
     # Calcul des Moyennes Mobiles
     prices_df['Short_MA'] = prices_df['Price'].rolling(window=short_window).mean()
     prices_df['Long_MA'] = prices_df['Price'].rolling(window=long_window).mean()
     
-    # Génération du signal : 1.0 (Achat/Long) si MA courte > MA longue, 0.0 sinon.
+    # Signal : 1.0 (Achat/Long) si MA courte > MA longue, 0.0 sinon.
     prices_df['Signal'] = 0.0
-    prices_df['Signal'][short_window:] = np.where(prices_df['Short_MA'][short_window:] > prices_df['Long_MA'][short_window:], 1.0, 0.0)
+    prices_df['Signal'][long_window:] = np.where(prices_df['Short_MA'][long_window:] > prices_df['Long_MA'][long_window:], 1.0, 0.0)
     
-    # Détermination des positions : 1 (Achat), -1 (Vente), 0 (Conservation/Cash)
-    prices_df['Position'] = prices_df['Signal'].diff()
-    prices_df['Position'].iloc[0] = prices_df['Signal'].iloc[0] # Position initiale
-    
-    # Calcul des rendements quotidiens de l'actif
     prices_df['Market_Returns'] = prices_df['Price'].pct_change()
     
-    # Rendements de la stratégie : Rendement du marché * Position de la veille
+    # Rendements de la stratégie : Rendement du marché * Position de la veille (Signal.shift(1))
     prices_df['Strategy_Returns'] = prices_df['Signal'].shift(1).fillna(0) * prices_df['Market_Returns']
     
-    # Valeur cumulée du portefeuille (Base 100)
+    # Valeur cumulée du portefeuille (1 + rendement cumulé)
     cumulative_value = (1 + prices_df['Strategy_Returns']).cumprod()
     
-    # Normalisation : Démarrer la stratégie après la période d'initialisation de la MA longue
+    # Normalisation : Démarrer la stratégie après la période d'initialisation
+    # Utilise l'index valide (après la MA longue) pour la normalisation à 100.0
     start_index = prices_df['Long_MA'].first_valid_index()
     if start_index in cumulative_value.index and not cumulative_value[start_index] == 0:
         cumulative_value = cumulative_value / cumulative_value[start_index] * 100.0
     else:
-        # Si la normalisation à l'index de départ échoue, normaliser à partir du premier jour valide
+        # Fallback si le premier index valide est introuvable ou nul (devrait être rare)
         cumulative_value = cumulative_value / cumulative_value.dropna().iloc[0] * 100.0
     
     return cumulative_value
 
 def calculate_metrics(returns: pd.Series, risk_free_rate=0.04) -> dict:
     """
-    Calcule les métriques de performance clés (Max-Drawdown et Sharpe Ratio).
+    Calcule les métriques de performance clés : Max-Drawdown et Sharpe Ratio.
+
+    :param returns: pd.Series de la valeur cumulée du portefeuille de la stratégie.
+    :param risk_free_rate: Taux sans risque annuel (par défaut 4% ou 0.04).
+    :return: dict contenant le Max Drawdown et le Sharpe Ratio annuel.
     """
     if returns.empty or len(returns) < 2:
         return {"Max Drawdown": "N/A", "Sharpe Ratio (Annuel)": "N/A"}
         
-    # Rendements quotidiens
+    # Rendements quotidiens (basés sur la Série de Valeur Cumulée)
     daily_returns = returns.pct_change().dropna()
 
-    # 1. Max Drawdown (Glissement Maximum)
+    # 1. Max Drawdown
     cumulative_returns = (1 + daily_returns).cumprod()
     rolling_max = cumulative_returns.cummax()
     drawdown = (cumulative_returns / rolling_max) - 1
-    
-    # Utilisation de .item() pour extraire le scalaire (correction de TypeError)
     max_drawdown = drawdown.min().item() 
     
     # 2. Sharpe Ratio Annuel
-    annualization_factor = np.sqrt(252)
+    annualization_factor = np.sqrt(252) # Facteur d'annualisation pour les jours de trading
     
-    # Utilisation de .item() pour extraire le scalaire (correction de TypeError)
-    avg_return = daily_returns.mean().item() * 252 # Annualisé
-    volatility = daily_returns.std().item() * annualization_factor # Annualisé
+    # Calcul de la moyenne des rendements annualisée
+    avg_return = daily_returns.mean().item() * 252
+    # Calcul de la volatilité annualisée (Écart-type)
+    volatility = daily_returns.std().item() * annualization_factor
     
-    # Conversion en float pour la comparaison
     volatility = float(volatility) 
     
-    # Sharpe Ratio
+    # Calcul du Sharpe Ratio
     if volatility == 0:
         sharpe_ratio = 0.0
     else:
+        # Formule du Sharpe Ratio: (Rendement annuel - Taux sans risque) / Volatilité annuelle
         sharpe_ratio = float((avg_return - risk_free_rate) / volatility)
         
     return {
@@ -106,25 +116,31 @@ def calculate_metrics(returns: pd.Series, risk_free_rate=0.04) -> dict:
 
 def run_backtest(data: pd.DataFrame, strategy_name: str, **params) -> pd.Series:
     """
-    Exécute la stratégie demandée sur les données de prix.
+    Fonction principale pour exécuter la stratégie demandée.
+
+    :param data: pd.DataFrame contenant les données de prix historiques (colonne 'Price').
+    :param strategy_name: Nom de la stratégie ('Buy-and-Hold' ou 'MA Crossover').
+    :param params: Paramètres spécifiques à la stratégie (ex: short_window, long_window).
+    :return: pd.Series de la valeur cumulée du portefeuille.
     """
     prices = data['Price']
     
     if strategy_name == "Buy-and-Hold":
-        # CORRECTION APPLIQUÉE
+        # Implémente la stratégie Buy-and-Hold
         return calculate_buy_and_hold(prices)
     
     elif strategy_name == "MA Crossover":
-        # Récupère les paramètres passés par Streamlit
+        # Récupère les paramètres de la stratégie MA Crossover
         short_window = params.get('short_window', 50)
         long_window = params.get('long_window', 200)
         return calculate_ma_crossover(prices, short_window, long_window)
     
+    # Retourne une série vide si la stratégie n'est pas reconnue
     return pd.Series(dtype=float)
 
 
 if __name__ == '__main__':
-    # --- Test du module (simuler des données) ---
+    # --- Bloc de test pour le module (inchangé) ---
     dates = pd.date_range(start='2024-01-01', periods=250)
     data_test = pd.DataFrame({
         'Price': np.random.normal(loc=100, scale=1, size=250).cumsum() + 100

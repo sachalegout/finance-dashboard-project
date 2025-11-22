@@ -1,0 +1,7 @@
+# requirements.txt
+streamlit
+pandas  # Version standard récente mais qui a des wheels
+numpy
+yfinance
+plotly
+matplotlib
