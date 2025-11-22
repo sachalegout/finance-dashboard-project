@@ -1,0 +1,15 @@
+# deployment/cron_job_config.txt
+#
+# Configuration du cron job pour le Rapport Quotidien (Core Feature 6)
+# Le rapport est généré tous les jours à 20h00 (heure locale du serveur Linux).
+#
+# Le fichier de rapport est stocké dans le dossier 'data' du projet.
+#
+# Format de la commande Cron: m h dom mon dow commande
+# m = minute (0-59)
+# h = heure (0-23)
+# dom = jour du mois (1-31)
+# mon = mois (1-12)
+# dow = jour de la semaine (0-7, 0 ou 7 = Dimanche)
+
+0 20 * * * /usr/bin/python3 /path/to/your/project/daily_report.py >> /path/to/your/project/cron.log 2>&1
