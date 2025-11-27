@@ -1,0 +1,11 @@
+--- Rapport Quotidien NVDA du 2025-11-20 ---
+Généré le : 2025-11-21 12:49:55
+
+--- Données Clés (Dernier Jour de Trading) ---
+Prix d'Ouverture : 195.95 $
+Prix de Clôture : 180.64 $
+Performance journalière : -7.81 %
+
+--- Métriques de Risque (6 Derniers Mois) ---
+Volatilité Annualisée : 32.48 %
+Max Drawdown : -12.75 %

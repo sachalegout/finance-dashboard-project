@@ -2,7 +2,7 @@ import yfinance as yf
 import pandas as pd
 
 # Ticker choisi : NVIDIA
-TICKER = "BTC-USD"
+TICKER = "NDVA"
 
 def get_historical_data(period="6mo"):
     """

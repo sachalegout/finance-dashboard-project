@@ -1,0 +1,12 @@
+# Environnement virtuel Python
+venv/
+
+# Fichiers de configuration sensibles
+.env
+
+# Fichiers de cache et temporaires
+__pycache__/
+*.pyc
+
+# Fichiers de Streamlit
+.streamlit/
